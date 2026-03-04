@@ -20,23 +20,34 @@ Parse `$ARGUMENTS` to determine the action:
 
 1. Read `.claude/todo.md`. If it doesn't exist, say "No TODO items yet."
 2. **Auto-update**: Scan the current conversation context for items that may have been completed or started. If any TODO items have been addressed by work done in this session, update their status automatically (move to Done with completion date, or to In Progress).
-3. Display all items grouped by status (Pending, In Progress, Done).
+3. Display all items grouped by status (Pending, In Progress, Open Questions, Done).
 4. Suggest which item to work on next (lowest-numbered pending item).
-5. If there are completed items older than 2 weeks, suggest running `/todo clean`.
+5. If any open questions now have enough context to resolve, propose converting them to TODOs or closing them.
+6. If there are completed items older than 2 weeks, suggest running `/todo clean`.
 
 ### "add" → Scan context and propose new TODOs
 
 1. Read `.claude/todo.md` (create if missing).
-2. **Scan the entire conversation** for:
+2. **Scan the entire conversation** for two categories:
+
+   **Actionable TODOs** (things we know how to do):
    - Explicit next steps mentioned by the user or by Claude
    - Agreed-upon changes that haven't been implemented yet
    - Follow-up work identified during implementation
    - Bug reports or issues discovered but not yet fixed
    - Anything the user said "let's do that later" or "next time" about
-3. Draft a list of proposed TODO items with rich, self-contained descriptions (see "Writing good TODO descriptions" below).
-4. **Ask the user to confirm** which items to add (use AskUserQuestion with multiSelect). Include a brief summary for each proposed item so the user can judge.
+
+   **Open Questions** (unresolved issues that may become TODOs):
+   - Design questions where we discussed trade-offs but didn't decide
+   - Edge cases or asymmetries discovered but not yet addressed
+   - "We should think about X" or "I wonder if Y" — anything unresolved that has practical implications
+   - Questions that need investigation, data, or user input before they're actionable
+   - Do NOT capture pure musings or philosophical tangents — only questions tied to concrete project concerns
+
+3. Draft proposed items in both categories with rich descriptions (see "Writing good TODO descriptions" and "Writing good open questions" below).
+4. **Ask the user to confirm** which items to add (use AskUserQuestion with multiSelect). Present TODOs and Questions as separate groups so the user can judge each.
 5. Add confirmed items to the file with sequential numbers and today's date.
-6. If no new TODOs are found in context, say so.
+6. If no new items are found in context, say so.
 
 ### "clean" → Remove completed items
 
@@ -54,6 +65,14 @@ Claude should manage TODO status changes **proactively during normal work**, not
 - **When discovering new follow-up work during implementation**: Mention it to the user and offer to add it.
 
 This means `/todo` (list) often just confirms what Claude has already been tracking.
+
+### Open question lifecycle
+
+- **Adding**: When a conversation surfaces an unresolved design question, edge case, or trade-off with no clear answer, add it as a `?` item.
+- **Resolving**: When a question gets answered (by the user, by investigation, or by a later conversation), either:
+  - Convert it to a TODO: add a new `[ ]` item with the decided action, remove the `?` item.
+  - Close it: remove the `?` item and note the resolution briefly in the Done section if it's worth preserving.
+- **Stale questions**: During `/todo` list, if a question has been open for a while, mention it and ask if the user has new context.
 
 ## Writing good TODO descriptions
 
@@ -103,6 +122,43 @@ The TODO file lives on disk — it does NOT consume context tokens until read. S
   the new behavior.
 ```
 
+## Writing good open questions
+
+Open questions are things we noticed or discussed but can't act on yet. They sit in a dedicated section until resolved — at which point they either become a TODO or get removed.
+
+### What qualifies as an open question
+
+- A design decision with multiple valid approaches and no clear winner yet
+- An edge case or inconsistency discovered during work that needs more thought
+- Something that requires investigation, profiling, or user/stakeholder input
+- A known asymmetry or gap that might need fixing but the priority is unclear
+
+### What does NOT qualify
+
+- Pure musings ("wouldn't it be cool if...")
+- Questions already answered in the conversation (capture the answer as a TODO instead)
+- Vague concerns without concrete project impact
+
+### Examples
+
+**Good — captures the tension and what would resolve it:**
+```
+- ? #5 — Should weekly compliance adjust the 40h standard for holiday weeks? (added: 2026-03-04)
+  Currently a week with 3 statutory holidays still expects 40h, which flags everyone
+  as below standard. Options: (a) pro-rate to 8h × workdays, (b) skip the check for
+  short weeks, (c) leave as-is since holiday overtime should compensate. Need to check
+  with PM whether the 40h target is meant to be absolute or workday-proportional.
+```
+
+**Good — documents a discovered asymmetry:**
+```
+- ? #6 — Compliance vs analytics disagree on holiday overtime (added: 2026-03-04)
+  Compliance ignores holiday work entirely (is_workday filter), but CEO dashboard and
+  ROI reports count all hours including holidays. Someone working 8h on a holiday gets
+  zero compliance credit but the hours appear in analytics. Is this intentional? If not,
+  which system should change? Needs product decision before we can write a TODO.
+```
+
 ### Formatting rules for multi-line descriptions
 
 - First line: concise title after the `#N —`
@@ -138,6 +194,13 @@ The TODO file lives on disk — it does NOT consume context tokens until read. S
 - [-] #3 — Working on this task (added: 2026-03-03)
   Description with enough context to understand the task fully.
 
+## Open Questions
+
+- ? #5 — Should weekly compliance adjust the 40h standard for holiday weeks? (added: 2026-03-04)
+  Currently a week with 3 statutory holidays still expects 40h, which flags everyone
+  as below standard. Options: (a) pro-rate to 8h × workdays, (b) skip the check for
+  short weeks, (c) leave as-is. Need PM input on whether 40h is absolute or proportional.
+
 ## Done
 
 - [x] #4 — Completed task title (added: 2026-03-01, done: 2026-03-04)
@@ -145,11 +208,13 @@ The TODO file lives on disk — it does NOT consume context tokens until read. S
 ```
 
 Rules:
-- Items are numbered sequentially (never reuse numbers, even after removal)
+- Items are numbered sequentially across ALL sections (never reuse numbers, even after removal)
 - New items always get the next number (max existing + 1)
-- Keep all three sections even if empty
+- Keep all sections even if empty
 - Dates use YYYY-MM-DD format
-- Multi-line descriptions indented 2 spaces under the checkbox marker
+- Multi-line descriptions indented 2 spaces under the marker
+- TODOs use `[ ]` / `[-]` / `[x]` markers; Questions use `?` marker
+- When a question is resolved: either convert it to a TODO (new `[ ]` item referencing the question number) or remove it with a brief note of the resolution
 
 ## Important
 
