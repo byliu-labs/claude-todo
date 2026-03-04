@@ -18,7 +18,8 @@ The TODO index is cheap to read (titles only). Full PRD details live in separate
 └── todos/
     ├── 001.md           # Mini-PRD for item #1
     ├── 002.md           # Mini-PRD for item #2
-    └── 005.md           # Questions also get PRD files
+    ├── 005.md           # Questions also get PRD files
+    └── human.md         # Human action items — things only the user can do
 ```
 
 ## Behavior based on arguments
@@ -37,12 +38,15 @@ Parse `$ARGUMENTS`:
 ### "add" → Scan context and propose new items
 
 1. Read `.claude/todo.md` (create `.claude/` and `.claude/todos/` dirs if missing).
-2. Scan conversation for two categories:
-   - **Actionable TODOs**: agreed-upon changes, next steps, discovered bugs, "do later" items
+2. Scan conversation for three categories:
+   - **Actionable TODOs** (for Claude): agreed-upon changes, next steps, discovered bugs, "do later" items
    - **Open Questions**: unresolved design decisions, edge cases needing investigation, trade-offs without conclusions (NOT pure musings — must have concrete project impact)
-3. Draft proposed items as mini-PRDs.
-4. **Ask user to confirm** (AskUserQuestion, multiSelect). Present TODOs and Questions separately.
-5. For each confirmed item: add one-line entry to `todo.md` index + create `todos/NNN.md` with full PRD.
+   - **Human action items**: things only the user can do — manual testing (E2E, UI, device-specific), PM decisions, config changes in external services, credential setup, stakeholder communication, etc.
+3. Draft proposed items as mini-PRDs (TODOs and Questions) or as human checklist items.
+4. **Ask user to confirm** (AskUserQuestion, multiSelect). Present all three categories separately.
+5. For each confirmed item:
+   - TODOs/Questions: add one-line entry to `todo.md` index + create `todos/NNN.md` with full PRD.
+   - Human items: append to `todos/human.md` (see format below).
 
 ### "clean" → Remove old completed items
 
@@ -58,6 +62,7 @@ Claude manages status **proactively during normal work**:
 - **Starting work**: Read the item's `todos/NNN.md` first, update index to `[-]`.
 - **Finishing work**: Update index to `[x]` with completion date. **Never delete** — move to Done. The PRD file is kept for reference by related items.
 - **Discovering follow-up**: Mention to user, offer to add. If the new item depends on the just-completed one, note the dependency in the new PRD.
+- **Natural break points**: When Claude finishes a chunk of work (implementation + tests passing, a PR-ready commit, completing a TODO item), check `todos/human.md` for pending human items. If any are relevant to what was just completed, **remind the user** with a brief summary of what needs their attention and why now is a good time.
 
 ### Clarify-first protocol
 
@@ -141,3 +146,9 @@ PRD rules:
 - Include file paths, function names, line references where stable
 - Be detailed — these files are loaded on-demand, not always in context
 - If a PRD exceeds ~40 lines, the TODO might be too big — consider splitting
+
+## Human action items (`todos/human.md`)
+
+A flat `- [ ]` / `- [x]` checklist for things only the human can do: manual testing, PM decisions, external config, credential setup, etc. Not numbered — lives outside the TODO index. Reference related TODO numbers where applicable (e.g., "after #2 is done").
+
+Claude adds items during `/todo add`, checks them off when the user says they've done something, and **reminds the user at natural break points** — after completing a TODO, after all pending work is done, or at session start if stale items exist.
