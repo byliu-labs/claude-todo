@@ -16,14 +16,19 @@ Claude intelligently manages the TODO list — you don't write descriptions or p
 |---------|-------------|
 | `/todo` | List all items, auto-update status from conversation context, suggest next item |
 | `/todo add` | Claude scans conversation for next steps, proposes items, asks you to confirm |
-| `/todo clean` | Remove completed items |
+| `/todo clean` | Remove old completed items (> 2 weeks, unreferenced) |
 
 ## How it works
 
-- TODO items are stored in `.claude/todo.md` in your project repo
+- TODO items are stored in `.todos/` at your project root
+- A lightweight index at `.todos/index.md` has titles and status; detailed mini-PRDs live in `.todos/NNN.md`
 - Claude writes detailed, self-contained descriptions — any future session can execute items without prior context
 - Status updates happen automatically as Claude works on items
-- The file is meant to be committed, so your team can see planned work
+- A global registry at `~/.config/claude-todo/projects.md` tracks active TODOs across all your projects
+
+### Git
+
+The `.todos/` directory is committed by default, so your team can see planned work. Add `.todos/` to `.gitignore` if you prefer private tracking.
 
 ## Design philosophy
 
@@ -33,31 +38,28 @@ Claude intelligently manages the TODO list — you don't write descriptions or p
 - Status transitions — Claude marks items in-progress when starting work and done when finishing.
 - Rich descriptions — since the file is on disk (not in context), descriptions include file paths, function names, rationale, and expected behavior. No context is lost between sessions.
 
-## TODO file format
+## File layout
 
-```markdown
-# Project TODO
+### Project-level
 
-> Auto-managed by `/todo` command. Persists across conversations.
-
-## Pending
-
-- [ ] #1 — Daily compliance table-not-found: graceful alert instead of crash (added: 2026-03-04)
-  Currently `scripts/daily_compliance_check.py` raises RuntimeError (line ~185) when
-  no bitable table matches the target date. Change to: send an alert message to the
-  test user explaining which date/table was not found, then exit 0.
-
-## In Progress
-
-- [-] #3 — Refactor auth middleware (added: 2026-03-03)
-  Extract token validation from each route handler into shared middleware.
-  See `src/routes/api.py:authenticate()` for the pattern to extract.
-
-## Done
-
-- [x] #2 — Fix duplicate webhook processing (added: 2026-03-01, done: 2026-03-04)
-  Added idempotency check in `src/webhooks.py:handle_event()` using event ID dedup.
 ```
+.todos/
+├── index.md          # Lightweight index: titles, status, dates
+├── 001.md            # Mini-PRD for item #1
+├── 002.md            # etc.
+└── human.md          # Human-only action items
+```
+
+### Global
+
+```
+~/.config/claude-todo/
+└── projects.md       # Cross-project TODO registry
+```
+
+## Migration
+
+If you used a previous version that stored files in `.claude/todos/`, the plugin will auto-migrate on the next `/todo` invocation: files move from `.claude/todos/` to `.todos/` and `.claude/todo.md` becomes `.todos/index.md`.
 
 ## License
 

@@ -1,6 +1,6 @@
 {
   "name": "todo",
-  "version": "1.0.0",
+  "version": "1.1.0",
   "description": "Persistent project-level TODO tracking for Claude Code. Claude intelligently scans conversation context to add items, manages lifecycle automatically, and writes rich self-contained descriptions so any future session can pick up where you left off.",
   "author": {
     "name": "Asher Liu"
