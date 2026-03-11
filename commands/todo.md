@@ -6,24 +6,21 @@ allowed-tools: Read(**), Edit(**), Write(**), Glob(**), Grep(**), AskUserQuestio
 
 # Project TODO Tracker
 
-Manages a persistent TODO index at `.todos/index.md` with detailed mini-PRDs in `.todos/NNN.md`. **Claude owns the list** — writes descriptions, manages lifecycle, and clarifies gaps before implementing.
+Manages persistent TODO items in `.todos/`. Each item is a self-describing markdown file with YAML frontmatter. The index (`index.md`) is **derived** — rebuilt from scanning frontmatter, never manually edited.
 
-The TODO index is cheap to read (titles only). Full PRD details live in separate files, loaded on-demand when working on an item.
+**Claude owns the list** — writes descriptions, manages lifecycle, and clarifies gaps before implementing.
 
-A global registry at `~/.config/claude-todo/projects.md` tracks all projects with active TODOs.
-
-## File layout
-
-### Project-level (at project root)
+## Architecture
 
 ```
 .todos/
-├── index.md          # Lightweight index: titles, status, dates
-├── 001.md            # Mini-PRD for item #1
+├── index.md          # DERIVED — regenerated on every /todo invocation
+├── 001.md            # Mini-PRD for item #1 (any type)
 ├── 002.md            # Mini-PRD for item #2
-├── 004.md            # Questions also get PRD files
-└── human.md          # Human action items — things only the user can do
+└── 004.md            # Open question — also a PRD file
 ```
+
+Every item — whether actionable by Claude, blocked on a human, or an open question — is a numbered PRD file. The frontmatter `type` and `status` fields determine how items appear in the index.
 
 The `.todos/` directory is committed to git by default. Add `.todos/` to `.gitignore` if you prefer private tracking.
 
@@ -36,98 +33,131 @@ The `.todos/` directory is committed to git by default. Add `.todos/` to `.gitig
 
 > Cross-project TODO registry. Auto-updated by `/todo`.
 
-| Project | Path | Pending | Last updated |
-|---------|------|---------|--------------|
-| my-project | /absolute/path/to/project | 3 | 2026-03-11 |
+| Project | Path | Next action | Nearest deadline | Q1 | Q2 | Blocked | Last updated |
+|---------|------|-------------|------------------|----|----|---------|--------------|
+| odyssey-ml | /path/to/odyssey | #3 Update methodology doc | 2026-03-15 | 1 | 2 | 1 | 2026-03-11 |
+| nest | /path/to/nest | #12 Snapshot testing setup | — | 0 | 3 | 0 | 2026-03-11 |
 ```
 
-One row per project. Remove the row when a project has zero pending + zero in-progress + zero open question items.
+- **Next action**: Title of the lowest-numbered pending, unblocked item.
+- **Nearest deadline**: Earliest `deadline` among non-done items, or `—`.
+- **Q1 / Q2**: Count of non-done items in each quadrant.
+- **Blocked**: Count of items with `blocked_by` set.
 
-## Migration from `.claude/todos/`
+Remove a row when a project has zero non-done items.
 
-If the project has a legacy layout (`.claude/todo.md` or `.claude/todos/`):
+## Frontmatter schema
 
-1. Move `.claude/todos/*.md` to `.todos/` (preserving filenames).
-2. Move `.claude/todo.md` to `.todos/index.md`.
-3. Update path references inside index.md from `.claude/todos/NNN.md` to `.todos/NNN.md`.
-4. Delete empty `.claude/todos/` directory.
-5. Do NOT delete `.claude/` itself — it may contain other Claude Code config.
-6. Tell the user what was migrated.
+```yaml
+---
+id: 1
+title: "Daily compliance: graceful alert on table-not-found"
+type: todo            # todo | question | human
+status: pending       # pending | in-progress | done
+created: 2026-03-04
+done: null            # YYYY-MM-DD when completed, or null
+blocked_by: null      # "human", item id (integer), or null
+assignee: null        # name string or null
+quadrant: q2          # q1 | q2 | q3 | q4 | null
+deadline: null        # YYYY-MM-DD or null (hard deadlines only)
+---
+```
 
-**Trigger:** Any time `/todo` runs and `.claude/todo.md` exists but `.todos/index.md` does not. Only migrate once — if both exist, `.todos/index.md` is authoritative. If `.todos/index.md` exists AND `.claude/todos/` still contains `.md` files, warn the user about orphaned legacy files and ask whether to merge them into `.todos/`.
+### Field rules
 
-## Behavior based on arguments
+- `id`: Sequential integer, never reused. Zero-padded in filenames: `001.md`.
+- `type`:
+  - `todo` — actionable by Claude or developer
+  - `question` — unresolved design decision with concrete project impact
+  - `human` — only a human can do this (manual testing, PM decisions, credential setup, external config)
+- `status`: Three states only — `pending`, `in-progress`, `done`.
+  - **There is no `blocked` status.** Blocked items have `status: pending` with `blocked_by` set. The index generator uses `blocked_by` as a display hint to group them separately.
+- `blocked_by`: Single value. `"human"` for human-gated items, an integer item id for dependency chains, or `null`. **Limitation**: only one blocker per item. If an item has multiple blockers, pick the primary one and note others in the PRD body.
+- `assignee`: Name string for collaboration (works with git transport), or `null`.
+- `quadrant`: Eisenhower classification. `q1` = urgent + important (do first), `q2` = important, not urgent (schedule and protect), `q3` = urgent, not important (timebox), `q4` = neither (eliminate). `null` = not yet classified.
+- `deadline`: Hard external deadlines only (launches, contracts, compliance). Not aspirational targets.
 
-Parse `$ARGUMENTS`:
+## PRD body templates
 
-### No arguments or "list" → Show index + auto-update
+### TODOs and human items
 
-1. Read `.todos/index.md`. If missing, say "No TODO items yet. Use `/todo add` to scan the conversation for items."
-2. **Auto-update**: Scan conversation for items completed or started this session. Update status in the index.
-3. Display items grouped by: Pending, In Progress, Open Questions, Done.
-4. Suggest next item to work on (lowest pending number).
-5. If open questions now have enough context to resolve, propose converting or closing.
-6. If completed items > 2 weeks old, suggest `/todo clean`.
-7. **Update global registry**: Read `~/.config/claude-todo/projects.md` (create dir + file if missing). Update (or insert) the row for the current project: set pending count from the index, set last-updated to today. If the project has zero pending + zero in-progress + zero open question items, remove the row. Note: concurrent sessions in different projects may overwrite each other's row updates — if a row appears missing, re-run `/todo` in that project to re-register.
+```markdown
+# #1 — Daily compliance: graceful alert on table-not-found
 
-### "add" → Scan context and propose new items
+**Problem:** [Why this needs to change]
 
-1. Read `.todos/index.md` (create `.todos/` dir if missing).
-2. Scan conversation for three categories:
-   - **Actionable TODOs** (for Claude): agreed-upon changes, next steps, discovered bugs, "do later" items
-   - **Open Questions**: unresolved design decisions, edge cases needing investigation, trade-offs without conclusions (NOT pure musings — must have concrete project impact)
-   - **Human action items**: things only the user can do — manual testing (E2E, UI, device-specific), PM decisions, config changes in external services, credential setup, stakeholder communication, etc.
-3. Draft proposed items as mini-PRDs (TODOs and Questions) or as human checklist items.
-4. **Ask user to confirm** (AskUserQuestion, multiSelect). Present all three categories separately.
-5. For each confirmed item:
-   - TODOs/Questions: add one-line entry to `index.md` + create `.todos/NNN.md` with full PRD.
-   - Human items: append to `.todos/human.md` (see format below).
-6. **Update global registry**: Same as list step 7.
+**Current behavior:** [What happens now, with file paths and line numbers]
 
-### "clean" → Remove old completed items
+**Expected behavior:** [Specific enough to write tests from]
 
-1. Only remove `[x]` entries that are **> 2 weeks old AND not referenced by any pending/in-progress item**.
-2. Before deleting, check if any pending item's PRD mentions the completed item's number (e.g., "after #2 is done" or "blocked by #1"). If so, keep it.
-3. Remove qualifying entries from `index.md` and their `.todos/NNN.md` files.
-4. Report what was cleared and what was kept (with reason).
-5. **Update global registry**: Same as list step 7.
+**Edge cases:** [Boundary conditions, failure modes]
 
-## Lifecycle management
+**Test plan:** [How to verify]
 
-Claude manages status **proactively during normal work**:
+**Scope:** [In scope. Explicitly NOT in scope.]
+```
 
-- **Starting work**: Read the item's `.todos/NNN.md` first, update index to `[-]`.
-- **Finishing work**: Update index to `[x]` with completion date. **Never delete** — move to Done. The PRD file is kept for reference by related items.
-- **Discovering follow-up**: Mention to user, offer to add. If the new item depends on the just-completed one, note the dependency in the new PRD.
-- **Natural break points**: When Claude finishes a chunk of work (implementation + tests passing, a PR-ready commit, completing a TODO item), check `.todos/human.md` for pending human items. If any are relevant to what was just completed, **remind the user** with a brief summary of what needs their attention and why now is a good time.
+For `type: human`, replace Problem/Current/Expected with:
 
-### Clarify-first protocol
+```markdown
+# #7 — Set up API key in production dashboard
 
-**Before writing code for a TODO, read its `.todos/NNN.md` and check for `[TBD]` markers or gaps.** If any required PRD section is missing/vague, ask the user BEFORE starting. Check:
-1. Is the expected behavior specific enough to write a test from?
-2. Are edge cases covered?
-3. Is scope clear (what's in AND what's out)?
+**What:** [Concrete action the human needs to take]
 
-### Open question lifecycle
+**Why:** [What depends on it]
 
-- **Resolve** → convert to TODO (new `[ ]` item) or close with brief note in Done.
-- **Stale** → during `/todo list`, flag questions open > 1 week and ask if user has new context.
+**Needed for:** #3
 
-## Index format (`index.md`)
+**Done when:** [Observable outcome that confirms completion]
+```
+
+### Questions
+
+```markdown
+# #4 — Should 40h standard adjust for holiday weeks?
+
+**Context:** [Background]
+
+**Options:** [Alternatives with trade-offs]
+
+**What would resolve this:** [Decision or info needed]
+
+**Impact if ignored:** [What goes wrong]
+```
+
+### PRD rules
+
+- Use `[TBD]` for missing sections — signals "clarify before implementing"
+- Include file paths, function names, line references where stable
+- Be detailed — these files are loaded on-demand, not always in context
+- If a PRD exceeds ~40 lines, consider splitting into smaller items
+
+## Index generation
+
+The index is **never manually edited**. Claude rebuilds it by reading frontmatter from all `.todos/[0-9][0-9][0-9].md` files on every `/todo` invocation. This is pure string formatting — no LLM reasoning needed.
+
+A standalone `rebuild-index.sh` script ships with the plugin repo for CI and non-Claude use. Claude does not need to generate this script — it reads frontmatter directly and writes the index inline.
+
+### Index format
 
 ```markdown
 # Project TODO
 
-> Index only — details in `.todos/NNN.md`.
-
-## Pending
-
-- [ ] #1 — Daily compliance: graceful alert on table-not-found (added: 2026-03-04)
-- [ ] #2 — Weekly compliance: forgiveness logic for back-fillers (added: 2026-03-04)
+> Auto-generated from `.todos/*.md` frontmatter. Do not edit manually.
 
 ## In Progress
 
-- [-] #3 — Update methodology doc with holiday edge cases (added: 2026-03-04)
+- [-] #3 — Update methodology doc (added: 2026-03-04) @asher
+
+## Pending
+
+- [ ] #1 — Daily compliance: graceful alert (added: 2026-03-04) [q1] (due: 2026-03-15)
+- [ ] #2 — Weekly compliance: forgiveness logic (added: 2026-03-04) [q2]
+
+## Blocked
+
+- [ ] #7 — Set up API key in production dashboard (added: 2026-03-04) [blocked: human] [q1]
+- [ ] #8 — Deploy alerting to staging (added: 2026-03-05) [blocked: 7]
 
 ## Open Questions
 
@@ -138,65 +168,87 @@ Claude manages status **proactively during normal work**:
 - [x] #5 — Fix duplicate webhook processing (added: 2026-03-01, done: 2026-03-04)
 ```
 
-Index rules:
-- One line per item — title only, no details
-- Sequential numbering across all sections (never reuse)
-- `[ ]` / `[-]` / `[x]` for TODOs, `?` for questions
-- Keep all sections even if empty
-- PRD filenames are zero-padded to 3 digits: `001.md`, `002.md`, ..., `999.md`
+Grouping logic:
+- `status: in-progress` → In Progress
+- `status: pending` + `blocked_by: null` → Pending
+- `status: pending` + `blocked_by` set → Blocked (display the blocker)
+- `type: question` + not done → Open Questions
+- `status: done` → Done
 
-## PRD file format (`.todos/NNN.md`)
+Suffix tags: show `@assignee` if set, `[qN]` if set, `(due: date)` if set, `[blocked: X]` if blocked.
 
-Each file is a mini-PRD. Required sections for TODOs:
+### Token cost
 
-```markdown
-# #1 — Daily compliance: graceful alert on table-not-found
+Reading the index: ~20-50 tokens. Reading one PRD: ~100-200 tokens. Claude loads PRDs on-demand only when working on an item.
 
-**Problem:** [Why this needs to change — the pain point or failure mode]
+## Behavior based on arguments
 
-**Current behavior:** [What happens now, with file paths and line numbers]
+### No arguments or "list" → Rebuild index + display
 
-**Expected behavior:** [What should happen after, specific enough to write tests from]
+1. Scan all `.todos/[0-9][0-9][0-9].md` frontmatter.
+2. **Auto-update**: Scan conversation for items completed or started this session. Update frontmatter in relevant PRD files.
+3. **Rebuild index** from frontmatter.
+4. Display grouped items.
+5. **Prioritization hints**:
+   - Flag Q1 items not in-progress.
+   - Flag items with deadline within 7 days not in-progress.
+   - Suggest next item: lowest pending unblocked, preferring Q1 > Q2 > Q3 > unclassified > Q4.
+6. If open questions have enough context to resolve, propose converting or closing.
+7. If done items > 2 weeks old, suggest `/todo clean`.
+8. **Update global registry**.
 
-**Edge cases:** [Boundary conditions, failure modes, special scenarios]
+### "add" → Scan context and propose new items
 
-**Test plan:** [How to verify — unit tests, manual steps, expected output]
+1. Read index (rebuild if stale; create `.todos/` dir if missing).
+2. Scan conversation for: actionable TODOs, open questions, human action items.
+3. Draft items with frontmatter + PRD body. **Propose a quadrant for each.** Ask about deadline only if there's reason to believe one exists.
+4. **Ask user to confirm** (AskUserQuestion, multiSelect). Present categories separately. Include proposed quadrant so user can override.
+5. Create `.todos/NNN.md` for each confirmed item.
+6. Rebuild index. Update global registry.
 
-**Scope:** [What's in scope. What's explicitly NOT in scope.]
-```
+### "clean" → Remove old completed items
 
-For open questions:
+1. Only remove done items **> 2 weeks old AND not referenced by any non-done item's PRD**.
+2. Remove qualifying `.todos/NNN.md` files.
+3. Rebuild index. Update global registry.
+4. Report what was cleared and what was kept (with reason).
 
-```markdown
-# #4 — Should 40h standard adjust for holiday weeks?
+## Lifecycle management
 
-**Context:** [Background on the issue]
+Claude manages status **proactively during normal work**:
 
-**Options:** [Known alternatives with trade-offs]
+- **Starting work**: Read `.todos/NNN.md`, update to `status: in-progress`.
+- **Finishing work**: Update to `status: done`, set `done: YYYY-MM-DD`. Never delete the file.
+- **Discovering follow-up**: Offer to add. Set `blocked_by` on new item if it depends on the completed one.
+- **Natural break points**: After completing work, check for `type: human` items. Remind the user if any are relevant.
+- **Unblocking**: When a human confirms completion, set their item to `status: done`. Check if other items have `blocked_by` pointing to it — clear their `blocked_by` to `null`.
 
-**What would resolve this:** [Decision or information needed]
+### Clarify-first protocol
 
-**Impact if ignored:** [What goes wrong if we don't address this]
-```
+**Before writing code for a TODO, read its PRD and check for `[TBD]` markers.** If any required section is missing or vague, ask the user BEFORE starting:
+1. Is expected behavior specific enough to write a test from?
+2. Are edge cases covered?
+3. Is scope clear?
 
-PRD rules:
-- Use `[TBD]` for missing sections — signals "clarify before implementing"
-- Include file paths, function names, line references where stable
-- Be detailed — these files are loaded on-demand, not always in context
-- If a PRD exceeds ~40 lines, the TODO might be too big — consider splitting
+### Open question lifecycle
 
-## Human action items (`.todos/human.md`)
+- **Resolve** → create a TODO or mark done with brief note.
+- **Stale** → flag questions open > 1 week during `/todo list`.
 
-A flat `- [ ]` / `- [x]` checklist for things only the human can do: manual testing, PM decisions, external config, credential setup, etc. Not numbered — lives outside the TODO index. Reference related TODO numbers where applicable (e.g., "after #2 is done").
+## Collaboration: git as transport
 
-Example:
+Each item is a self-describing file, so collaborators can independently create and edit PRD files without conflict. The index is derived and rebuilt locally — it never conflicts.
 
-```markdown
-# Human Action Items
+**ID allocation**: `glob .todos/[0-9]*.md` to find next available number. On rare simultaneous creates, git merge surfaces both files and the next `/todo` detects + renumbers duplicates.
 
-- [ ] Run E2E tests on staging after #2 is deployed
-- [ ] Set up API key in production dashboard (needed for #3)
-- [x] Confirmed holiday schedule with PM (2026-03-05)
-```
+See `personal-os-vision.md` for the MCP server extension roadmap. The file format doesn't change when switching transports.
 
-Claude adds items during `/todo add`, checks them off when the user says they've done something, and **reminds the user at natural break points** — after completing a TODO, after all pending work is done, or at session start if stale items exist.
+## Migration from `.claude/todos/`
+
+**Trigger:** `/todo` runs and `.claude/todo.md` exists but `.todos/index.md` does not.
+
+1. Move `.claude/todos/*.md` → `.todos/` (preserve filenames).
+2. Add YAML frontmatter to files that lack it. Set `quadrant: null`, `deadline: null`.
+3. Regenerate index from frontmatter.
+4. Delete empty `.claude/todos/`. Do NOT delete `.claude/` itself.
+5. Tell the user what was migrated.
