@@ -247,9 +247,12 @@ See `personal-os-vision.md` for the MCP server extension roadmap. The file forma
 
 **Trigger:** `/todo` runs and `.claude/todo.md` exists but `.todos/index.md` does not.
 
+v1.x stored everything per-project inside `.claude/`. There was no global registry.
+
 1. Move `.claude/todos/*.md` → `.todos/` (preserve filenames).
 2. Add YAML frontmatter to each PRD file that lacks it. Parse title and status from old index entries or file content. Set `quadrant: null`, `deadline: null`, `blocked_by: null`.
 3. If `.claude/todos/human.md` exists, convert each `- [ ]` / `- [x]` entry into a separate numbered PRD file with `type: human`, `blocked_by: "human"`. Then delete `human.md`.
 4. Regenerate index from frontmatter.
 5. Delete empty `.claude/todos/`. Do NOT delete `.claude/` itself.
-6. Tell the user what was migrated.
+6. The global registry at `~/.config/claude-todo/projects.md` is new — it will be auto-created and populated when the "Update global registry" step runs at the end of `/todo list`.
+7. Tell the user what was migrated.

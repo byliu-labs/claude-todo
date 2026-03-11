@@ -74,6 +74,8 @@ The `.todos/` directory is committed by default. Add `.todos/` to `.gitignore` i
 
 ## Migration from v1.x
 
+v1.x stored everything per-project inside `.claude/`. There was no global registry.
+
 If you have projects with the old layout (`.claude/todo.md` and `.claude/todos/`), migration is automatic. Just run `/todo` in each project — Claude will:
 
 1. Move PRD files from `.claude/todos/*.md` → `.todos/`
@@ -81,6 +83,7 @@ If you have projects with the old layout (`.claude/todo.md` and `.claude/todos/`
 3. Convert `human.md` checklist entries into numbered PRD files with `type: human`
 4. Rebuild the index from frontmatter
 5. Clean up the empty `.claude/todos/` directory
+6. Auto-create the global registry at `~/.config/claude-todo/projects.md` (new in v2.0)
 
 No manual steps needed. The migration triggers once per project on first `/todo` run.
 
