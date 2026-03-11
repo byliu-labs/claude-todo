@@ -7,8 +7,11 @@ Claude intelligently manages the TODO list — you don't write descriptions or p
 ## Install
 
 ```bash
-/install-plugin https://github.com/byliu-labs/claude-todo
+/plugin marketplace add byliu-labs/claude-todo
+/plugin install claude-todo@byliu-labs-claude-todo
 ```
+
+Or interactively: run `/plugin`, go to **Discover**, and select claude-todo.
 
 ## Usage
 
