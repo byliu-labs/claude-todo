@@ -72,9 +72,17 @@ The `.todos/` directory is committed by default. Add `.todos/` to `.gitignore` i
 └── projects.md       # Cross-project TODO registry
 ```
 
-## Migration
+## Migration from v1.x
 
-If you used a previous version that stored files in `.claude/todos/`, the plugin auto-migrates on the next `/todo` invocation: files move to `.todos/` and get YAML frontmatter added.
+If you have projects with the old layout (`.claude/todo.md` and `.claude/todos/`), migration is automatic. Just run `/todo` in each project — Claude will:
+
+1. Move PRD files from `.claude/todos/*.md` → `.todos/`
+2. Add YAML frontmatter to files that lack it
+3. Convert `human.md` checklist entries into numbered PRD files with `type: human`
+4. Rebuild the index from frontmatter
+5. Clean up the empty `.claude/todos/` directory
+
+No manual steps needed. The migration triggers once per project on first `/todo` run.
 
 ## License
 

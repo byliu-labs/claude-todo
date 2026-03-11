@@ -248,7 +248,8 @@ See `personal-os-vision.md` for the MCP server extension roadmap. The file forma
 **Trigger:** `/todo` runs and `.claude/todo.md` exists but `.todos/index.md` does not.
 
 1. Move `.claude/todos/*.md` → `.todos/` (preserve filenames).
-2. Add YAML frontmatter to files that lack it. Set `quadrant: null`, `deadline: null`.
-3. Regenerate index from frontmatter.
-4. Delete empty `.claude/todos/`. Do NOT delete `.claude/` itself.
-5. Tell the user what was migrated.
+2. Add YAML frontmatter to each PRD file that lacks it. Parse title and status from old index entries or file content. Set `quadrant: null`, `deadline: null`, `blocked_by: null`.
+3. If `.claude/todos/human.md` exists, convert each `- [ ]` / `- [x]` entry into a separate numbered PRD file with `type: human`, `blocked_by: "human"`. Then delete `human.md`.
+4. Regenerate index from frontmatter.
+5. Delete empty `.claude/todos/`. Do NOT delete `.claude/` itself.
+6. Tell the user what was migrated.
