@@ -1,6 +1,6 @@
 {
   "name": "todo",
-  "version": "2.0.0",
+  "version": "2.4.0",
   "description": "Persistent project-level TODO tracking for Claude Code. Frontmatter-driven PRD files with Eisenhower quadrants, dependency tracking, and a derived index.",
   "author": {
     "name": "Asher Liu"

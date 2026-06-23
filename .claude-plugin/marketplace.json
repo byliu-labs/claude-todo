@@ -5,14 +5,14 @@
   },
   "metadata": {
     "description": "Persistent TODO tracking plugin for Claude Code",
-    "version": "2.0.0"
+    "version": "2.4.0"
   },
   "plugins": [
     {
       "name": "todo",
       "source": "./",
       "description": "Persistent project-level TODO tracking with frontmatter-driven PRDs, Eisenhower quadrants, and derived index.",
-      "version": "2.0.0",
+      "version": "2.4.0",
       "author": {
         "name": "Asher Liu"
       },
